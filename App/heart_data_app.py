@@ -17,7 +17,7 @@ def clear_matplotlib():
 # Load Excel file safely with error feedback
 @st.cache_data
 def load_data():
-    excel_path = r"C:\Users\Xiang\20250627_Big_Data\Heart_2022_With_Nans.xlsx"
+    excel_path = r"../Datasets/Original_Dataset.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         return df
@@ -33,6 +33,7 @@ def load_data():
 
 # Mean imputation for numeric fields
 def impute_missing(df):
+    df = df.copy()
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     imputer = SimpleImputer(strategy='mean')
     df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
