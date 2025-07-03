@@ -11,10 +11,11 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_curve, auc, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_curve, auc, mean_squared_error, r2_score, precision_score, recall_score, f1_score
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import warnings
+import time
 warnings.filterwarnings('ignore')
 
 # Set page configuration
@@ -63,6 +64,14 @@ st.markdown("""
         padding: 1rem;
         margin: 1rem 0;
         border-radius: 5px;
+    }
+    .execution-time {
+        background-color: #e8f4fd;
+        border-left: 4px solid #1f77b4;
+        padding: 1rem;
+        margin: 1rem 0;
+        border-radius: 5px;
+        font-weight: bold;
     }
     .sidebar .sidebar-content {
         background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
@@ -125,6 +134,214 @@ def data_preprocessing(df):
             label_encoders[col] = le
     
     return df_processed, label_encoders
+
+def prepare_ml_data(df, target_col='HadHeartAttack'):
+    """Prepare data for machine learning with consistent train-test split"""
+    # Prepare data
+    numeric_df = df.select_dtypes(include=[np.number])
+    if target_col not in numeric_df.columns:
+        st.error(f"Target column '{target_col}' not found in numeric data.")
+        return None, None, None, None, None, None
+    
+    X = numeric_df.drop(columns=[target_col])
+    y = numeric_df[target_col]
+    
+    # Remove any remaining NaN values
+    mask = ~(X.isnull().any(axis=1) | y.isnull())
+    X = X[mask]
+    y = y[mask]
+    
+    if len(X) == 0:
+        st.error("No valid data available for model training.")
+        return None, None, None, None, None, None
+    
+    # Split data with consistent parameters
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+    
+    return X, y, X_train, X_test, y_train, y_test
+
+def calculate_model_metrics(y_test, y_pred, y_pred_proba):
+    """Calculate comprehensive model metrics"""
+    accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred, average='binary')
+    recall = recall_score(y_test, y_pred, average='binary')
+    f1 = f1_score(y_test, y_pred, average='binary')
+    
+    # ROC AUC
+    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
+    auc_score = auc(fpr, tpr)
+    
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'auc': auc_score,
+        'fpr': fpr,
+        'tpr': tpr
+    }
+
+def display_model_results(model_name, metrics, execution_time, y_test, y_pred, feature_names=None, feature_importance=None):
+    """Display comprehensive model results"""
+    
+    # Execution time display
+    st.markdown(f"""
+    <div class="execution-time">
+        ⏱️ <strong>{model_name} Execution Time:</strong> {execution_time:.4f} minutes ({execution_time*60:.2f} seconds)
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Performance metrics cards
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{metrics['accuracy']:.4f}</h3>
+            <p>Accuracy</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{metrics['precision']:.4f}</h3>
+            <p>Precision</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{metrics['recall']:.4f}</h3>
+            <p>Recall</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>{metrics['f1_score']:.4f}</h3>
+            <p>F1-Score</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # ROC Curve and Confusion Matrix
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # ROC Curve
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=metrics['fpr'],
+            y=metrics['tpr'],
+            mode='lines',
+            name=f"{model_name} (AUC: {metrics['auc']:.4f})",
+            line=dict(width=3, color='blue')
+        ))
+        fig.add_trace(go.Scatter(
+            x=[0, 1],
+            y=[0, 1],
+            mode='lines',
+            line=dict(dash='dash', color='red'),
+            name='Random Classifier'
+        ))
+        fig.update_layout(
+            title=f"ROC Curve - {model_name}",
+            xaxis_title="False Positive Rate",
+            yaxis_title="True Positive Rate",
+            width=400,
+            height=400
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Confusion Matrix
+        cm = confusion_matrix(y_test, y_pred)
+        fig = px.imshow(
+            cm,
+            text_auto=True,
+            aspect="auto",
+            title=f"Confusion Matrix - {model_name}",
+            labels=dict(x="Predicted", y="Actual"),
+            x=['No Heart Attack', 'Heart Attack'],
+            y=['No Heart Attack', 'Heart Attack']
+        )
+        fig.update_layout(width=400, height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Feature Importance (if available)
+    if feature_importance is not None and feature_names is not None:
+        st.subheader(f"📊 Feature Importance - {model_name}")
+        importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': feature_importance
+        }).sort_values('Importance', ascending=False).head(10)
+        
+        fig = px.bar(
+            importance_df,
+            x='Importance',
+            y='Feature',
+            orientation='h',
+            title=f"Top 10 Feature Importances - {model_name}",
+            color='Importance',
+            color_continuous_scale='viridis'
+        )
+        fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Model interpretation insights
+    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+    st.write(f"**🎯 {model_name} Performance Insights:**")
+    st.write(f"• **Accuracy**: {metrics['accuracy']:.4f} - The model correctly predicts {metrics['accuracy']*100:.2f}% of all cases")
+    st.write(f"• **Precision**: {metrics['precision']:.4f} - Of all positive predictions, {metrics['precision']*100:.2f}% are correct")
+    st.write(f"• **Recall**: {metrics['recall']:.4f} - The model identifies {metrics['recall']*100:.2f}% of all actual positive cases")
+    st.write(f"• **F1-Score**: {metrics['f1_score']:.4f} - Balanced measure of precision and recall")
+    st.write(f"• **AUC**: {metrics['auc']:.4f} - Area under ROC curve (closer to 1.0 is better)")
+    
+    # Performance interpretation
+    if metrics['auc'] >= 0.9:
+        st.write("🌟 **Excellent performance** - Very strong predictive ability")
+    elif metrics['auc'] >= 0.8:
+        st.write("✅ **Good performance** - Strong predictive ability")
+    elif metrics['auc'] >= 0.7:
+        st.write("⚠️ **Fair performance** - Moderate predictive ability")
+    else:
+        st.write("❌ **Poor performance** - Limited predictive ability")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def train_random_forest(df):
+    """Train and analyze Random Forest model"""
+    st.markdown('<div class="sub-header">🌲 Random Forest Analysis</div>', unsafe_allow_html=True)
+    
+    # Prepare data
+    data_tuple = prepare_ml_data(df)
+    if data_tuple[0] is None:
+        return
+    
+    X, y, X_train, X_test, y_train, y_test = data_tuple
+    
+    # Train model
+    start_time = time.time()
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    
+    # Make predictions
+    y_pred = model.predict(X_test)
+    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    
+    execution_time = (time.time() - start_time) / 60  # Convert to minutes
+    
+    # Calculate metrics
+    metrics = calculate_model_metrics(y_test, y_pred, y_pred_proba)
+    
+    # Display results with feature importance
+    display_model_results("Random Forest", metrics, execution_time, y_test, y_pred, 
+                         X.columns.tolist(), model.feature_importances_)
 
 def create_overview_metrics(df):
     """Create overview metrics cards"""
@@ -271,380 +488,243 @@ def create_distribution_analysis(df):
         )
     
     fig.update_layout(
-        title="Feature Distributions",
         height=300 * rows,
-        showlegend=False
+        title_text="Feature Distribution Analysis",
+        showlegend=False,
+        title_x=0.5
     )
     
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Statistical summary
+    st.subheader("📈 Statistical Summary")
+    summary_stats = df[selected_features].describe()
+    st.dataframe(summary_stats.round(3))
+    
+    # Distribution insights
+    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+    st.write("**🎯 Distribution Insights:**")
+    for feature in selected_features:
+        skewness = df[feature].skew()
+        if abs(skewness) > 1:
+            st.write(f"• {feature}: Highly skewed distribution (skewness: {skewness:.2f})")
+        elif abs(skewness) > 0.5:
+            st.write(f"• {feature}: Moderately skewed distribution (skewness: {skewness:.2f})")
+        else:
+            st.write(f"• {feature}: Normal distribution (skewness: {skewness:.2f})")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-def create_target_analysis(df, target_col='HadHeartAttack'):
-    """Analyze target variable relationships"""
-    if target_col not in df.columns:
-        st.warning(f"Target column '{target_col}' not found.")
-        return
+def create_advanced_visualizations(df):
+    """Create advanced visualizations for deeper insights"""
+    st.markdown('<div class="sub-header">🎨 Advanced Visualizations</div>', unsafe_allow_html=True)
     
-    st.markdown('<div class="sub-header">🎯 Heart Attack Risk Analysis</div>', unsafe_allow_html=True)
-    
-    # Target distribution
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        target_counts = df[target_col].value_counts()
-        fig = px.pie(
-            values=target_counts.values,
-            names=['No Heart Attack', 'Heart Attack'],
-            title="Heart Attack Distribution",
-            color_discrete_sequence=['#90EE90', '#FF6B6B']
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Age group analysis
-        if 'Age' in df.columns:
-            # Ensure Age is numeric and handle any potential string values
-            df_age = df.copy()
-            df_age['Age'] = pd.to_numeric(df_age['Age'], errors='coerce')
-            df_age = df_age.dropna(subset=['Age'])
+    # Heart Attack Analysis by Demographics
+    if 'HadHeartAttack' in df.columns:
+        st.subheader("💔 Heart Attack Analysis by Demographics")
+        
+        demographic_cols = []
+        for col in df.columns:
+            if df[col].dtype == 'object' or df[col].nunique() < 20:
+                demographic_cols.append(col)
+        
+        if demographic_cols:
+            selected_demo = st.selectbox(
+                "Select demographic variable:",
+                demographic_cols,
+                key="demo_selector"
+            )
             
-            if len(df_age) > 0:
-                # Create age groups
-                df_age['AgeGroup'] = pd.cut(
-                    df_age['Age'], 
-                    bins=[0, 30, 50, 70, 100], 
-                    labels=['<30', '30-50', '50-70', '70+'],
-                    include_lowest=True
-                )
-                
-                # Calculate heart attack rate by age group
-                age_heart_attack = df_age.groupby('AgeGroup')[target_col].mean().reset_index()
+            if selected_demo:
+                # Create crosstab
+                crosstab = pd.crosstab(df[selected_demo], df['HadHeartAttack'], normalize='index') * 100
                 
                 fig = px.bar(
-                    age_heart_attack,
-                    x='AgeGroup',
-                    y=target_col,
-                    title="Heart Attack Rate by Age Group",
-                    color=target_col,
-                    color_continuous_scale='Reds'
+                    crosstab,
+                    title=f"Heart Attack Rate by {selected_demo}",
+                    labels={'value': 'Percentage (%)', 'index': selected_demo},
+                    color_discrete_map={0: 'lightblue', 1: 'red'}
                 )
-                fig.update_layout(yaxis_title="Heart Attack Rate")
+                
+                fig.update_layout(
+                    xaxis_title=selected_demo,
+                    yaxis_title="Heart Attack Rate (%)",
+                    showlegend=True
+                )
+                
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.warning("No valid age data found for analysis.")
-        else:
-            st.warning("Age column not found for age group analysis.")
-
-def create_risk_factor_analysis(df):
-    """Analyze various risk factors"""
-    st.markdown('<div class="sub-header">⚠️ Risk Factor Analysis</div>', unsafe_allow_html=True)
     
-    risk_factors = ['Smoking', 'AlcoholDrinking', 'PhysicalActivity', 'Diabetic', 'HadStroke']
-    available_factors = [factor for factor in risk_factors if factor in df.columns]
+    # Scatter Plot Matrix
+    st.subheader("🔍 Scatter Plot Matrix")
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     
-    if not available_factors:
-        st.warning("No risk factor columns found.")
-        return
-    
-    if 'HadHeartAttack' not in df.columns:
-        st.warning("Target variable 'HadHeartAttack' not found.")
-        return
-    
-    # Calculate risk ratios
-    risk_data = []
-    for factor in available_factors:
-        if factor in df.columns:
-            risk_ratio = df.groupby(factor)['HadHeartAttack'].mean()
-            if len(risk_ratio) >= 2:
-                ratio = risk_ratio.iloc[1] / risk_ratio.iloc[0] if risk_ratio.iloc[0] > 0 else 0
-                risk_data.append({
-                    'Risk Factor': factor,
-                    'Risk Ratio': ratio,
-                    'Baseline Rate': risk_ratio.iloc[0],
-                    'Risk Rate': risk_ratio.iloc[1] if len(risk_ratio) > 1 else 0
-                })
-    
-    if risk_data:
-        risk_df = pd.DataFrame(risk_data)
-        
-        fig = px.bar(
-            risk_df,
-            x='Risk Factor',
-            y='Risk Ratio',
-            title="Risk Ratios for Heart Attack",
-            color='Risk Ratio',
-            color_continuous_scale='Reds'
+    if len(numeric_cols) >= 3:
+        selected_scatter_vars = st.multiselect(
+            "Select variables for scatter plot matrix:",
+            numeric_cols,
+            default=numeric_cols[:3],
+            key="scatter_selector"
         )
-        fig.add_hline(y=1, line_dash="dash", line_color="black", annotation_text="Baseline Risk")
-        st.plotly_chart(fig, use_container_width=True)
         
-        st.markdown('<div class="insight-box">', unsafe_allow_html=True)
-        st.write("**📈 Risk Factor Insights:**")
-        for _, row in risk_df.iterrows():
-            if row['Risk Ratio'] > 1.2:
-                st.write(f"• {row['Risk Factor']}: {row['Risk Ratio']:.2f}x higher risk")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-def train_multiple_models(df, target_col='HadHeartAttack'):
-    """Train and compare Linear Regression, Random Forest, SVM, and Neural Network models"""
-    st.markdown('<div class="sub-header">🤖 Machine Learning Model Comparison</div>', unsafe_allow_html=True)
-    
-    # Prepare data
-    numeric_df = df.select_dtypes(include=[np.number])
-    if target_col not in numeric_df.columns:
-        st.warning(f"Target column '{target_col}' not found in numeric data.")
-        return
-    
-    X = numeric_df.drop(columns=[target_col])
-    y = numeric_df[target_col]
-    
-    # Remove any remaining NaN values
-    mask = ~(X.isnull().any(axis=1) | y.isnull())
-    X = X[mask]
-    y = y[mask]
-    
-    if len(X) == 0:
-        st.warning("No valid data available for model training.")
-        return
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-    
-    # Scale features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    # Define models
-    models = {
-        'Linear Regression': LinearRegression(),
-        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
-        'Support Vector Machine': SVC(probability=True, random_state=42),
-        'Neural Network': MLPClassifier(hidden_layer_sizes=(100, 50), max_iter=1000, random_state=42)
-    }
-    
-    # Train and evaluate models
-    results = []
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, (name, model) in enumerate(models.items()):
-        status_text.text(f'Training {name}...')
-        progress_bar.progress((i + 1) / len(models))
-        
-        try:
-            if name == 'Linear Regression':
-                # For linear regression, we'll use it as a classifier by thresholding
-                model.fit(X_train_scaled, y_train)
-                y_pred_continuous = model.predict(X_test_scaled)
-                y_pred = (y_pred_continuous > 0.5).astype(int)
-                y_pred_proba = np.clip(y_pred_continuous, 0, 1)
-                
-                accuracy = accuracy_score(y_test, y_pred)
-                fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-                auc_score = auc(fpr, tpr)
-                
-            else:
-                # For classification models
-                if name in ['Support Vector Machine', 'Neural Network']:
-                    model.fit(X_train_scaled, y_train)
-                    y_pred = model.predict(X_test_scaled)
-                    y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-                else:
-                    model.fit(X_train, y_train)
-                    y_pred = model.predict(X_test)
-                    y_pred_proba = model.predict_proba(X_test)[:, 1]
-                
-                accuracy = accuracy_score(y_test, y_pred)
-                fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-                auc_score = auc(fpr, tpr)
+        if len(selected_scatter_vars) >= 2:
+            scatter_df = df[selected_scatter_vars].dropna()
             
-            results.append({
-                'Model': name,
-                'Accuracy': accuracy,
-                'AUC': auc_score,
-                'FPR': fpr,
-                'TPR': tpr,
-                'Trained': True
-            })
-            
-        except Exception as e:
-            st.warning(f"Error training {name}: {str(e)}")
-            results.append({
-                'Model': name,
-                'Accuracy': 0,
-                'AUC': 0,
-                'FPR': [0, 1],
-                'TPR': [0, 1],
-                'Trained': False
-            })
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Filter out failed models
-    successful_results = [r for r in results if r['Trained']]
-    
-    if not successful_results:
-        st.error("No models trained successfully.")
-        return
-    
-    # Display results
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Accuracy comparison
-        results_df = pd.DataFrame(successful_results)[['Model', 'Accuracy', 'AUC']]
-        fig = px.bar(
-            results_df,
-            x='Model',
-            y='Accuracy',
-            title="Model Accuracy Comparison",
-            color='Accuracy',
-            color_continuous_scale='Viridis'
-        )
-        fig.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # ROC curves
-        fig = go.Figure()
-        for result in successful_results:
-            fig.add_trace(go.Scatter(
-                x=result['FPR'],
-                y=result['TPR'],
-                mode='lines',
-                name=f"{result['Model']} (AUC: {result['AUC']:.3f})",
-                line=dict(width=2)
-            ))
-        
-        fig.add_trace(go.Scatter(
-            x=[0, 1],
-            y=[0, 1],
-            mode='lines',
-            line=dict(dash='dash', color='gray'),
-            name='Random Classifier'
-        ))
-        
-        fig.update_layout(
-            title="ROC Curves Comparison",
-            xaxis_title="False Positive Rate",
-            yaxis_title="True Positive Rate",
-            legend=dict(x=0.6, y=0.1)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Performance metrics table
-    st.subheader("📊 Model Performance Summary")
-    performance_df = pd.DataFrame(successful_results)[['Model', 'Accuracy', 'AUC']].round(4)
-    performance_df = performance_df.sort_values('AUC', ascending=False)
-    st.dataframe(performance_df, use_container_width=True)
-    
-    # Best model analysis
-    if successful_results:
-        best_model_idx = max(range(len(successful_results)), key=lambda i: successful_results[i]['AUC'])
-        best_model_name = successful_results[best_model_idx]['Model']
-        
-        st.markdown(f'<div class="insight-box">', unsafe_allow_html=True)
-        st.write(f"**🏆 Best Performing Model: {best_model_name}**")
-        st.write(f"• Accuracy: {successful_results[best_model_idx]['Accuracy']:.4f}")
-        st.write(f"• AUC Score: {successful_results[best_model_idx]['AUC']:.4f}")
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Feature importance for Random Forest
-        if best_model_name == 'Random Forest':
-            best_model = models[best_model_name]
-            feature_importance = pd.Series(
-                best_model.feature_importances_,
-                index=X.columns
-            ).sort_values(ascending=False)
-            
-            fig = px.bar(
-                x=feature_importance.values[:10],
-                y=feature_importance.index[:10],
-                orientation='h',
-                title=f"Top 10 Feature Importances - {best_model_name}",
-                labels={'x': 'Importance', 'y': 'Features'}
+            fig = px.scatter_matrix(
+                scatter_df,
+                title="Feature Relationships - Scatter Plot Matrix",
+                height=600
             )
-            fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+            
+            fig.update_traces(diagonal_visible=False)
             st.plotly_chart(fig, use_container_width=True)
 
+
+def create_feature_importance_analysis(df):
+    """Create comprehensive feature importance analysis"""
+    st.markdown('<div class="sub-header">🎯 Feature Importance Analysis</div>', unsafe_allow_html=True)
+    
+    # Prepare data
+    data_tuple = prepare_ml_data(df)
+    if data_tuple[0] is None:
+        return
+    
+    X, y, X_train, X_test, y_train, y_test = data_tuple
+    
+    # Train Random Forest for feature importance
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
+    
+    # Get feature importance
+    feature_importance = pd.DataFrame({
+        'Feature': X.columns,
+        'Importance': rf_model.feature_importances_
+    }).sort_values('Importance', ascending=False)
+    
+    # Top 15 features
+    top_features = feature_importance.head(15)
+    
+    fig = px.bar(
+        top_features,
+        x='Importance',
+        y='Feature',
+        orientation='h',
+        title="Top 15 Feature Importance (Random Forest)",
+        color='Importance',
+        color_continuous_scale='viridis'
+    )
+    
+    fig.update_layout(
+        yaxis={'categoryorder': 'total ascending'},
+        height=600
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Feature importance insights
+    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+    st.write("**🎯 Feature Importance Insights:**")
+    st.write(f"• **Most Important Feature:** {top_features.iloc[0]['Feature']} (Importance: {top_features.iloc[0]['Importance']:.4f})")
+    st.write(f"• **Top 3 Features:** {', '.join(top_features.head(3)['Feature'].tolist())}")
+    st.write(f"• **Cumulative Importance (Top 5):** {top_features.head(5)['Importance'].sum():.4f}")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Main application
 def main():
     # Header
-    st.markdown('<div class="main-header">❤️ Heart Disease Analytics Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header"❤️ Heart Disease Analytics Dashboard</div>', unsafe_allow_html=True)
     st.markdown("**Team Members:** Arief bin Abdul Latib, Khor Cojean, Lim Yong Xiang, Ooi Yong Hang")
-    st.markdown("---")
-    
+
     # Sidebar
-    st.sidebar.title("📋 Dashboard Controls")
-    st.sidebar.markdown("---")
+    st.sidebar.title("🔧 Dashboard Controls")
     
     # Load data
-    with st.spinner("Loading data..."):
-        df_raw = load_data()
-        if df_raw.empty:
-            st.stop()
+    df = load_data()
+    
+    if df.empty:
+        st.error("No data available. Please check the data file.")
+        return
     
     # Data preprocessing
-    with st.spinner("Preprocessing data..."):
-        df_clean, label_encoders = data_preprocessing(df_raw)
+    df_processed, label_encoders = data_preprocessing(df)
     
     # Sidebar options
     analysis_type = st.sidebar.selectbox(
-        "Choose Analysis Type:",
-        ["📊 Data Overview", "🔍 Exploratory Analysis", "🎯 Risk Analysis", "🤖 Machine Learning", "📈 All Analyses"]
+        "Select Analysis Type:",
+        [
+            "📊 Data Overview",
+            "🔥 Correlation Analysis",
+            "📈 Distribution Analysis",
+            "🎨 Advanced Visualizations",
+            "🌲 Random Forest",
+            "🎯 Feature Importance"
+        ]
     )
     
-    # Main content based on selection
-    if analysis_type == "📊 Data Overview" or analysis_type == "📈 All Analyses":
-        st.header("📊 Data Overview")
-        create_overview_metrics(df_clean)
+    # Display selected analysis
+    if analysis_type == "📊 Data Overview":
+        st.markdown('<div class="sub-header">📊 Dataset Overview</div>', unsafe_allow_html=True)
         
+        # Overview metrics
+        create_overview_metrics(df)
+        
+        # Data info
         col1, col2 = st.columns(2)
+        
         with col1:
-            st.subheader("Raw Data Sample")
-            st.dataframe(df_raw.head(), use_container_width=True)
+            st.subheader("📋 Dataset Information")
+            st.write(f"**Shape:** {df.shape}")
+            st.write(f"**Memory Usage:** {df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
+            st.write(f"**Numeric Columns:** {len(df.select_dtypes(include=[np.number]).columns)}")
+            st.write(f"**Categorical Columns:** {len(df.select_dtypes(include=['object']).columns)}")
         
         with col2:
-            st.subheader("Processed Data Sample")
-            st.dataframe(df_clean.head(), use_container_width=True)
+            st.subheader("🔍 Data Quality")
+            missing_data = df.isnull().sum()
+            if missing_data.sum() > 0:
+                st.write("**Missing Values:**")
+                for col, missing in missing_data[missing_data > 0].items():
+                    st.write(f"• {col}: {missing} ({missing/len(df)*100:.1f}%)")
+            else:
+                st.write("✅ No missing values detected")
         
-        # Data quality analysis
-        st.subheader("📋 Data Quality Report")
-        missing_data = df_raw.isnull().sum()
-        missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+        # Sample data
+        st.subheader("📄 Sample Data")
+        st.dataframe(df.head(10))
         
-        if len(missing_data) > 0:
-            fig = px.bar(
-                x=missing_data.values,
-                y=missing_data.index,
-                orientation='h',
-                title="Missing Values by Feature",
-                labels={'x': 'Missing Count', 'y': 'Features'}
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.success("✅ No missing values found!")
+        # Data types
+        st.subheader("🏷️ Data Types")
+        dtype_df = pd.DataFrame({
+            'Column': df.columns,
+            'Data Type': df.dtypes,
+            'Unique Values': df.nunique(),
+            'Missing Values': df.isnull().sum()
+        })
+        st.dataframe(dtype_df)
     
-    if analysis_type == "🔍 Exploratory Analysis" or analysis_type == "📈 All Analyses":
-        st.header("🔍 Exploratory Data Analysis")
-        create_interactive_correlation_heatmap(df_clean)
-        create_distribution_analysis(df_clean)
+    elif analysis_type == "🔥 Correlation Analysis":
+        create_interactive_correlation_heatmap(df_processed)
     
-    if analysis_type == "🎯 Risk Analysis" or analysis_type == "📈 All Analyses":
-        st.header("🎯 Risk Factor Analysis")
-        create_target_analysis(df_clean)
-        create_risk_factor_analysis(df_clean)
+    elif analysis_type == "📈 Distribution Analysis":
+        create_distribution_analysis(df_processed)
     
-    if analysis_type == "🤖 Machine Learning" or analysis_type == "📈 All Analyses":
-        st.header("🤖 Machine Learning Analysis")
-        train_multiple_models(df_clean)
+    elif analysis_type == "🎨 Advanced Visualizations":
+        create_advanced_visualizations(df_processed)
+        
+    elif analysis_type == "🌲 Random Forest":
+        train_random_forest(df_processed)
+    
+    elif analysis_type == "🎯 Feature Importance":
+        create_feature_importance_analysis(df_processed)
     
     # Footer
     st.markdown("---")
-    st.markdown("*Dashboard created with ❤️ using Streamlit and Plotly*")
+    st.markdown(
+        "💡 **Tips:** Use the sidebar to navigate between different analyses. "
+        "Each analysis provides insights into the heart disease dataset."
+    )
+
+    st.markdown(
+        "5011CEM: Big Data Programming"
+    )
 
 if __name__ == "__main__":
     main()
