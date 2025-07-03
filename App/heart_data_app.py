@@ -69,6 +69,20 @@ st.markdown("""
     .sidebar .sidebar-content {
         background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%);
     }
+    .reference-guide {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 1rem 0;
+    }
+    .reference-header {
+        background-color: #e9ecef;
+        padding: 0.5rem;
+        border-radius: 5px;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,7 +90,7 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load the heart disease dataset with comprehensive error handling"""
-    excel_path = r"../Datasets/Cleaned_Dataset_v2.xlsx"
+    excel_path = r"C:\Users\Xiang\20250627_Big_Data\20250630_Heart_2022_V3.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         st.sidebar.success(f"✅ Data loaded successfully! Shape: {df.shape}")
@@ -127,6 +141,83 @@ def data_preprocessing(df):
             label_encoders[col] = le
     
     return df_processed, label_encoders
+
+def create_quick_reference_guide(df_original, df_processed, label_encoders):
+    """Create a quick reference guide for encoded values"""
+    st.markdown('<div class="sub-header">📚 Quick Reference Guide</div>', unsafe_allow_html=True)
+    
+    if not label_encoders:
+        st.info("No categorical variables were encoded in this dataset.")
+        return
+    
+    st.markdown("""
+    <div class="reference-guide">
+        <div class="reference-header">🔍 Encoded Categories Mapping</div>
+        <p>This guide shows how categorical values were converted to numbers for analysis:</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create columns for better layout
+    num_cols = min(2, len(label_encoders))
+    cols = st.columns(num_cols)
+    
+    for idx, (column, encoder) in enumerate(label_encoders.items()):
+        col_idx = idx % num_cols
+        
+        with cols[col_idx]:
+            st.markdown(f"""
+            <div class="reference-guide">
+                <div class="reference-header">📊 {column}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Get original values and their encoded counterparts
+            original_values = df_original[column].dropna().unique()
+            
+            # Create mapping dataframe
+            mapping_data = []
+            for orig_val in original_values:
+                try:
+                    encoded_val = encoder.transform([str(orig_val)])[0]
+                    mapping_data.append({
+                        'Original Value': orig_val,
+                        'Encoded Value': encoded_val
+                    })
+                except:
+                    continue
+            
+            if mapping_data:
+                mapping_df = pd.DataFrame(mapping_data)
+                mapping_df = mapping_df.sort_values('Encoded Value')
+                
+                # Display as a clean table
+                st.dataframe(
+                    mapping_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # Add summary statistics
+                st.markdown(f"""
+                <small>
+                📈 <strong>Summary:</strong> {len(mapping_df)} unique values encoded<br>
+                🔢 <strong>Range:</strong> {mapping_df['Encoded Value'].min()} to {mapping_df['Encoded Value'].max()}
+                </small>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning(f"No mapping available for {column}")
+    
+    # Add interpretation guide
+    st.markdown("""
+    <div class="reference-guide">
+        <div class="reference-header">💡 How to Use This Guide</div>
+        <ul>
+            <li><strong>Original Value:</strong> The actual category name from your data</li>
+            <li><strong>Encoded Value:</strong> The number used in analysis and machine learning</li>
+            <li><strong>Remember:</strong> Higher encoded values don't mean "better", they're just labels</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
 
 def prepare_ml_data(df, target_col='HadHeartAttack'):
     """Prepare data for machine learning with consistent train-test split"""
@@ -620,10 +711,9 @@ def create_feature_importance_analysis(df):
     st.write(f"• **Cumulative Importance (Top 5):** {top_features.head(5)['Importance'].sum():.4f}")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Main application
 def main():
     # Header
-    st.markdown('<div class="main-header"❤️ Heart Disease Analytics Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">❤️ Heart Disease Analytics Dashboard</div>', unsafe_allow_html=True)
     st.markdown("**Team Members:** Arief bin Abdul Latib, Khor Cojean, Lim Yong Xiang, Ooi Yong Hang")
 
     # Sidebar
@@ -644,6 +734,7 @@ def main():
         "Select Analysis Type:",
         [
             "📊 Data Overview",
+            "📚 Quick Reference Guide",
             "🔥 Correlation Analysis",
             "📈 Distribution Analysis",
             "🎨 Advanced Visualizations",
@@ -670,28 +761,39 @@ def main():
             st.write(f"**Categorical Columns:** {len(df.select_dtypes(include=['object']).columns)}")
         
         with col2:
-            st.subheader("🔍 Data Quality")
+            st.subheader("🧹 Data Quality")
             missing_data = df.isnull().sum()
-            if missing_data.sum() > 0:
-                st.write("**Missing Values:**")
-                for col, missing in missing_data[missing_data > 0].items():
-                    st.write(f"• {col}: {missing} ({missing/len(df)*100:.1f}%)")
+            missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+            
+            if len(missing_data) > 0:
+                st.write("**Missing Values by Column:**")
+                for col, missing_count in missing_data.items():
+                    percentage = (missing_count / len(df)) * 100
+                    st.write(f"• {col}: {missing_count} ({percentage:.1f}%)")
             else:
-                st.write("✅ No missing values detected")
+                st.success("✅ No missing values found!")
+            
+            # Duplicate rows
+            duplicates = df.duplicated().sum()
+            if duplicates > 0:
+                st.write(f"**Duplicate Rows:** {duplicates}")
+            else:
+                st.success("✅ No duplicate rows found!")
         
         # Sample data
-        st.subheader("📄 Sample Data")
-        st.dataframe(df.head(10))
+        st.subheader("📝 Sample Data")
+        st.dataframe(df.head(10), use_container_width=True)
         
-        # Data types
-        st.subheader("🏷️ Data Types")
-        dtype_df = pd.DataFrame({
-            'Column': df.columns,
-            'Data Type': df.dtypes,
-            'Unique Values': df.nunique(),
-            'Missing Values': df.isnull().sum()
-        })
-        st.dataframe(dtype_df)
+        # Statistical summary
+        st.subheader("📊 Statistical Summary")
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            st.dataframe(df[numeric_cols].describe().round(3), use_container_width=True)
+        else:
+            st.warning("No numeric columns found for statistical summary.")
+    
+    elif analysis_type == "📚 Quick Reference Guide":
+        create_quick_reference_guide(df, df_processed, label_encoders)
     
     elif analysis_type == "🔥 Correlation Analysis":
         create_interactive_correlation_heatmap(df_processed)
@@ -701,7 +803,7 @@ def main():
     
     elif analysis_type == "🎨 Advanced Visualizations":
         create_advanced_visualizations(df_processed)
-        
+    
     elif analysis_type == "🌲 Random Forest":
         train_random_forest(df_processed)
     
@@ -715,9 +817,6 @@ def main():
         "Each analysis provides insights into the heart disease dataset."
     )
 
-    st.markdown(
-        "5011CEM: Big Data Programming"
-    )
-
+# Run the application
 if __name__ == "__main__":
     main()
