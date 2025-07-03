@@ -51,13 +51,6 @@ st.markdown("""
         text-align: center;
         margin: 0.5rem 0;
     }
-    .insight-box {
-        background-color: #f8f9fa;
-        border-left: 4px solid #28a745;
-        padding: 1rem;
-        margin: 1rem 0;
-        border-radius: 5px;
-    }
     .warning-box {
         background-color: #fff3cd;
         border-left: 4px solid #ffc107;
@@ -83,7 +76,7 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load the heart disease dataset with comprehensive error handling"""
-    excel_path = r"C:\Users\Xiang\20250627_Big_Data\Cleaned_Dataset_v2.xlsx"
+    excel_path = r"../Datasets/Cleaned_Dataset_v2.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         st.sidebar.success(f"✅ Data loaded successfully! Shape: {df.shape}")
@@ -293,7 +286,6 @@ def display_model_results(model_name, metrics, execution_time, y_test, y_pred, f
         st.plotly_chart(fig, use_container_width=True)
     
     # Model interpretation insights
-    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
     st.write(f"**🎯 {model_name} Performance Insights:**")
     st.write(f"• **Accuracy**: {metrics['accuracy']:.4f} - The model correctly predicts {metrics['accuracy']*100:.2f}% of all cases")
     st.write(f"• **Precision**: {metrics['precision']:.4f} - Of all positive predictions, {metrics['precision']*100:.2f}% are correct")
@@ -417,7 +409,8 @@ def create_interactive_correlation_heatmap(df):
         title="Feature Correlation Matrix",
         width=800,
         height=600,
-        title_x=0.5
+        title_x=0.5, 
+        title_xanchor="center"
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -434,7 +427,6 @@ def create_interactive_correlation_heatmap(df):
     
     corr_pairs.sort(key=lambda x: abs(x[2]), reverse=True)
     
-    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
     st.write("**🎯 Strongest Correlations:**")
     for i, (feat1, feat2, corr) in enumerate(corr_pairs[:5]):
         if not np.isnan(corr):
@@ -491,7 +483,8 @@ def create_distribution_analysis(df):
         height=300 * rows,
         title_text="Feature Distribution Analysis",
         showlegend=False,
-        title_x=0.5
+        title_x=0.5,
+        title_xanchor="center"
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -502,7 +495,8 @@ def create_distribution_analysis(df):
     st.dataframe(summary_stats.round(3))
     
     # Distribution insights
-    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     st.write("**🎯 Distribution Insights:**")
     for feature in selected_features:
         skewness = df[feature].skew()
@@ -620,7 +614,6 @@ def create_feature_importance_analysis(df):
     st.plotly_chart(fig, use_container_width=True)
     
     # Feature importance insights
-    st.markdown('<div class="insight-box">', unsafe_allow_html=True)
     st.write("**🎯 Feature Importance Insights:**")
     st.write(f"• **Most Important Feature:** {top_features.iloc[0]['Feature']} (Importance: {top_features.iloc[0]['Importance']:.4f})")
     st.write(f"• **Top 3 Features:** {', '.join(top_features.head(3)['Feature'].tolist())}")
