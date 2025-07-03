@@ -83,7 +83,7 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load the heart disease dataset with comprehensive error handling"""
-    excel_path = r"C:\Users\Xiang\20250627_Big_Data\20250630_Heart_2022_V3.xlsx"
+    excel_path = r"C:\Users\Xiang\20250627_Big_Data\Cleaned_Dataset_v2.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         st.sidebar.success(f"✅ Data loaded successfully! Shape: {df.shape}")
