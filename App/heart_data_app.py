@@ -29,11 +29,25 @@ st.set_page_config(
 # Custom CSS for better styling
 st.markdown("""
 <style>
+
+    html, body, [class*="css"] {
+        font-size: 1.2rem !important;
+    }
+    h1, h2, h3, h4 {
+        font-size: 1.5rem !important;
+    }
+    .stMarkdown p {
+        font-size: 1.2rem !important;
+    }
+    .st-emotion-cache-1v0mbdj {
+        font-size: 1.5rem !important;
+    }
+
     .main-header {
         font-size: 3rem;
-        color: #1f77b4;
+        color: #1f47b4;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1.5rem;
         font-weight: bold;
     }
     .sub-header {
@@ -42,6 +56,8 @@ st.markdown("""
         margin: 1rem 0;
         border-left: 4px solid #3498db;
         padding-left: 1rem;
+
+        
     }
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -79,6 +95,7 @@ st.markdown("""
     .reference-header {
         background-color: #e9ecef;
         padding: 0.5rem;
+        font-size: 1.1rem;
         border-radius: 5px;
         font-weight: bold;
         margin-bottom: 0.5rem;
@@ -86,11 +103,12 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # Cache data loading
 @st.cache_data
 def load_data():
     """Load the heart disease dataset with comprehensive error handling"""
-    excel_path = r"C:\Users\Xiang\20250627_Big_Data\20250630_Heart_2022_V3.xlsx"
+    excel_path = r"C:\Users\Chee Siong\Big Data Programming\Cleaned_Dataset_v2.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         st.sidebar.success(f"✅ Data loaded successfully! Shape: {df.shape}")
