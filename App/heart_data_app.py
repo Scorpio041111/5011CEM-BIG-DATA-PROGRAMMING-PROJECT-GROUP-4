@@ -1,19 +1,13 @@
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_curve, auc, mean_squared_error, r2_score, precision_score, recall_score, f1_score
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_curve, auc, precision_score, recall_score, f1_score
+from sklearn.preprocessing import LabelEncoder
 import warnings
 import time
 warnings.filterwarnings('ignore')
@@ -108,7 +102,7 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load the heart disease dataset with comprehensive error handling"""
-    excel_path = r"C:\Users\Chee Siong\Big Data Programming\Cleaned_Dataset_v2.xlsx"
+    excel_path = r"../datasets/Cleaned_Dataset_v2.xlsx"
     try:
         df = pd.read_excel(excel_path, engine="openpyxl")
         st.sidebar.success(f"✅ Data loaded successfully! Shape: {df.shape}")
@@ -132,23 +126,13 @@ def data_preprocessing(df):
         if df_processed[col].dtype == 'object':
             # Try to convert to numeric first
             try:
-                df_processed[col] = pd.to_numeric(df_processed[col], errors='ignore')
+                df_processed[col] = pd.to_numeric(df_processed[col])
             except:
                 pass
     
     # Separate numeric and categorical columns after type conversion
     numeric_cols = df_processed.select_dtypes(include=[np.number]).columns
     categorical_cols = df_processed.select_dtypes(include=['object', 'category']).columns
-    
-    # Impute numeric columns with median (more robust than mean)
-    if len(numeric_cols) > 0:
-        numeric_imputer = SimpleImputer(strategy='median')
-        df_processed[numeric_cols] = numeric_imputer.fit_transform(df_processed[numeric_cols])
-    
-    # Impute categorical columns with mode
-    if len(categorical_cols) > 0:
-        categorical_imputer = SimpleImputer(strategy='most_frequent')
-        df_processed[categorical_cols] = categorical_imputer.fit_transform(df_processed[categorical_cols])
     
     # Encode categorical variables
     label_encoders = {}
