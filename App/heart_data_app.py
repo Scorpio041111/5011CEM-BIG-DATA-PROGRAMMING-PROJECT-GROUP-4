@@ -131,13 +131,12 @@ def data_preprocessing(df):
                 pass
     
     # Separate numeric and categorical columns after type conversion
-    numeric_cols = df_processed.select_dtypes(include=[np.number]).columns
     categorical_cols = df_processed.select_dtypes(include=['object', 'category']).columns
     
     # Encode categorical variables
     label_encoders = {}
     for col in categorical_cols:
-        if col in df_processed.columns:
+        if col in df_processed.columns and col != 'State':
             le = LabelEncoder()
             df_processed[col] = le.fit_transform(df_processed[col].astype(str))
             label_encoders[col] = le
@@ -530,7 +529,7 @@ def create_distribution_analysis(df):
     """Create comprehensive distribution analysis"""
     st.markdown('<div class="sub-header">📊 Feature Distribution Analysis</div>', unsafe_allow_html=True)
     
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    numeric_cols = df.select_dtypes(include=[np.number, 'object']).columns.tolist()
     
     if not numeric_cols:
         st.warning("No numeric columns found for distribution analysis.")
@@ -584,6 +583,13 @@ def create_distribution_analysis(df):
     
     # Statistical summary
     st.subheader("📈 Statistical Summary")
+
+    label_encoders = {}
+
+    le = LabelEncoder()
+    df['State'] = le.fit_transform(df['State'].astype(str))
+    label_encoders['State'] = le
+    
     summary_stats = df[selected_features].describe()
     st.dataframe(summary_stats.round(3))
     
@@ -795,6 +801,9 @@ def main():
             st.warning("No numeric columns found for statistical summary.")
     
     elif analysis_type == "📚 Quick Reference Guide":
+        le = LabelEncoder()
+        df_processed['State'] = le.fit_transform(df_processed['State'].astype(str))
+        label_encoders['State'] = le
         create_quick_reference_guide(df, df_processed, label_encoders)
     
     elif analysis_type == "🔥 Correlation Analysis":
